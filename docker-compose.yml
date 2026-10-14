@@ -1,0 +1,111 @@
+# Запуск всего сервиса одной командой:
+#     cp deploy/env.example .env   &&   nano .env
+#     docker compose up -d --build
+#
+# Проверить:   docker compose ps
+# Логи:        docker compose logs -f worker
+# Больше карт: docker compose up -d --scale worker=2
+#
+# ВНИМАНИЕ: для воркера нужен NVIDIA Container Toolkit на хосте, иначе
+# контейнер не увидит видеокарту:
+#     https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/
+
+services:
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CLIPPER_PUBLIC: "1"
+      CLIPPER_DATA_DIR: /data
+    volumes:
+      - clipper-data:/data
+      - clipper-backups:/app/backups
+    # Наружу не публикуем: доступ только через nginx на хосте.
+    # Для проверки без nginx замените на "127.0.0.1:8000:8000".
+    expose:
+      - "8000"
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WHISPER_MODEL: ${CLIPPER_WHISPER_MODEL:-large-v3-turbo}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CLIPPER_DATA_DIR: /data
+    volumes:
+      - clipper-data:/data
+    # Задача идёт десятки минут: даём завершиться штатно, иначе ffmpeg
+    # останется висеть, а задача — в статусе «выполняется».
+    stop_grace_period: 300s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  cleanup:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CLIPPER_DATA_DIR: /data
+    volumes:
+      - clipper-data:/data
+    command: ["python", "cleanup.py", "--loop"]
+
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CLIPPER_DATA_DIR: /data
+    volumes:
+      - clipper-data:/data
+      - clipper-backups:/app/backups
+    command: ["python", "backup.py", "--loop"]
+
+  # PostgreSQL — включается профилем, когда SQLite перестанет справляться:
+  #     docker compose --profile postgres up -d
+  # и CLIPPER_DB_URL=postgresql://clipper:ПАРОЛЬ@db/clipper в .env
+  db:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: clipper
+      POSTGRES_DB: clipper
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+    volumes:
+      - clipper-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clipper"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  clipper-data:
+  clipper-backups:
+  clipper-db:

@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>shorts-clipper — панель управления</title>
+<meta name="csrf-token" content="{{ csrf_token }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+<header>
+  <h1>shorts-clipper</h1>
+  {% if not public_mode %}<span class="badge">локальная панель</span>{% endif %}
+  <span class="badge"><span id="dot" class="dot"></span> <span id="stat">простой</span></span>
+  <div style="margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span class="pill" id="daysPill" title="Осталось до конца доступа">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/>
+        <path d="M12 7v5l3 2"/></svg>
+      <span id="daysTxt">…</span>
+    </span>
+    <span class="badge" id="whoami">—</span>
+    {% if contact %}
+    {# Оплаты на сайте нет — продление доступа только через администратора. #}
+    <a class="badge contactLink" id="contactLink"
+       href="{{ contact_href }}" target="_blank" rel="noopener noreferrer"
+       title="Написать администратору по вопросам доступа">Связаться: {{ contact }}</a>
+    {% endif %}
+    <button type="button" class="ghost" id="adminBtn" style="display:none;padding:6px 12px;font-size:12.5px">Пользователи</button>
+    <button type="button" class="ghost" id="logoutBtn" style="padding:6px 12px;font-size:12.5px">Выйти</button>
+  </div>
+</header>
+
+<div class="modal" id="adminModal">
+  <div class="modalBox">
+    <div class="modalHead">
+      <div style="display:flex;gap:8px;align-items:center">
+        <button type="button" class="tab on" id="tabUsers">Пользователи</button>
+        <button type="button" class="tab" id="tabCost">Расходы и себестоимость</button>
+      </div>
+      <button type="button" class="ghost" id="admClose" style="padding:5px 12px">Закрыть</button>
+    </div>
+
+    <div id="paneCost" style="display:none">
+      <div class="costGrid" id="costCards"></div>
+      <div class="admForm" style="margin-top:14px">
+        <div style="font-weight:600;margin-bottom:8px">По этапам обработки</div>
+        <div id="costStages"></div>
+      </div>
+      <div style="font-weight:600;margin:16px 0 8px">Последние прогоны</div>
+      <div id="costRuns"></div>
+      <div class="hint" style="margin-top:14px" id="costNote"></div>
+      <button type="button" class="ghost" id="costReset" style="margin-top:12px;padding:6px 12px">
+        Сбросить статистику</button>
+    </div>
+
+    <div id="paneUsers">
+    <div class="admForm">
+      <div class="row">
+        <div><label style="margin-top:0">Почта нового пользователя</label>
+          <input type="email" id="nuEmail" placeholder="client@mail.ru"></div>
+        <div><label style="margin-top:0">Пароль</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="nuPass" placeholder="минимум 6 символов">
+            <button type="button" class="ghost" id="genPass" title="Сгенерировать">↻</button>
+          </div></div>
+      </div>
+      <div class="row">
+        <div><label>Доступ на дней</label><input type="number" id="nuDays" value="30" min="1"></div>
+        <div><label>Заметка (необязательно)</label><input type="text" id="nuNote" placeholder="кто это"></div>
+      </div>
+      <button type="button" class="go" id="nuCreate" style="margin-top:14px">Создать аккаунт</button>
+      <div class="err" id="admErr"></div>
+    </div>
+
+    <div class="admTools">
+      <input type="text" id="admSearch" placeholder="Поиск по почте или заметке…">
+      <select id="admFilter">
+        <option value="">Все аккаунты</option>
+        <option value="active">Только активные</option>
+        <option value="expired">Только истёкшие</option>
+        <option value="soon">Заканчиваются (≤7 дней)</option>
+      </select>
+      <span class="hint" id="admCount"></span>
+    </div>
+
+    <div class="bulkBar" id="bulkBar">
+      <label class="bulkChk"><input type="checkbox" id="selAll"> Выбрать все</label>
+      <span class="bulkInfo" id="bulkInfo">Выбрано: 0</span>
+      <span style="flex:1"></span>
+      <input type="number" id="bulkDays" value="7" min="-3650" max="3650" title="Сколько дней добавить">
+      <button type="button" class="go" id="bulkExtend">Добавить дни выбранным</button>
+      <button type="button" class="stop" id="bulkDelete">Удалить выбранных</button>
+    </div>
+
+    <div id="usersList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div>
+    <form id="f">
+      <div class="card">
+        <h2>1. Что нарезаем</h2>
+        <p class="sub">Можно вперемешку: несколько ссылок и/или несколько файлов.</p>
+
+        <label>Ссылки на видео
+          <div class="hint">YouTube, VK, TikTok и др. Каждая ссылка — с новой строки.</div>
+        </label>
+        <textarea name="urls" placeholder="https://www.youtube.com/watch?v=..."></textarea>
+
+        <label>Файлы с компьютера
+          <div class="hint">Копируются в папку web_uploads. Для больших файлов удобнее вписать путь ниже.</div>
+        </label>
+        <input type="file" name="files" multiple accept="video/*">
+
+        <!--LOCAL_ONLY-->
+        <label>Или пути к файлам (без копирования)
+          <div class="hint">По одному в строке. Быстрее для больших файлов: Shift+ПКМ по файлу → «Копировать как путь».</div>
+        </label>
+        <textarea name="paths" placeholder="C:\Users\Имя\Desktop\video.mkv"></textarea>
+        <!--/LOCAL_ONLY-->
+      </div>
+
+      <div class="card">
+        <h2>2. Режим камеры</h2>
+        <p class="sub">Как кадрировать вертикальное видео из горизонтального.</p>
+        <div class="modes" id="modes">
+          <label class="on"><input type="radio" name="camera_mode" value="smart" checked>
+            <span><b>Умная камера (обычная)</b>
+            <span>Находит лица и следит за говорящим. Сплит-скрин для диалогов, летербокс для общих планов.</span></span></label>
+
+          <label><input type="radio" name="camera_mode" value="smart_asd">
+            <span><b>Умная камера + нейросеть ASD <code>--asd</code></b>
+            <span>Точнее определяет, кто говорит (по губам и звуку). Нужен PyTorch и видеокарта. Медленнее, но качественнее.</span></span></label>
+
+          <label><input type="radio" name="camera_mode" value="static">
+            <span><b>Без слежения — центральная обрезка <code>--static-fit</code></b>
+            <span>Весь кадр вписывается в 9:16 с обрезкой краёв. Ничего не дёргается, но люди мельче. Детектор лиц не используется — быстрее.</span></span></label>
+        </div>
+
+        <div id="cropBox" style="display:none">
+          <label>Сила обрезки краёв <code>--static-crop</code>
+            <div class="hint">Доля, обрезаемая с каждого края (0–0.35). 0.15 — по умолчанию; больше = люди крупнее и полосы тоньше; 0 = кадр целиком.</div>
+          </label>
+          <div class="cropRow">
+            <input type="range" id="cropRange" min="0" max="0.35" step="0.01" value="0.15">
+            <input type="number" name="static_crop" id="cropNum" value="0.15" step="0.01" min="0" max="0.35">
+          </div>
+
+          <div class="cropViz">
+            <div class="cv-col">
+              <div class="cv-cap">Исходник 16:9 — что отрежется</div>
+              <div class="cv-src">
+                <div class="cv-cut cv-left"  id="cutL"></div>
+                <div class="cv-cut cv-right" id="cutR"></div>
+                <div class="cv-keep" id="cvKeep"><span id="cvKeepTxt">70%</span></div>
+              </div>
+            </div>
+            <div class="cv-col">
+              <div class="cv-cap">Результат 9:16 — как ляжет</div>
+              <div class="cv-out">
+                <div class="cv-blur">размытые полосы</div>
+                <div class="cv-fg" id="cvFg"><span id="cvFgTxt">45%</span></div>
+                <div class="cv-blur">размытые полосы</div>
+              </div>
+            </div>
+          </div>
+          <div class="hint" id="cropNote"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>3. Клипы</h2>
+        <div class="row">
+          <div>
+            <label>Сколько клипов <code>--clips</code></label>
+            <input type="number" name="clips" value="10" min="1">
+            <div class="hint">В пакетном режиме — сколько лучших оставить со всех видео.</div>
+          </div>
+          <div>
+            <label>Длина клипов <code>--length</code></label>
+            <select name="length">
+              <option value="">по умолчанию (1m)</option>
+              <option value="30s">30s — 15–30 с, динамичные</option>
+              <option value="1m">1m — 30–60 с, стандарт</option>
+              <option value="2m">2m — 60–120 с, глубокие истории</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="check">
+          <input type="checkbox" name="batch" id="batch">
+          <label for="batch" style="margin:0"><b>Пакетный режим <code>--films</code></b>
+          <span>С каждого видео берётся N кандидатов, затем со всех видео вместе рендерятся только лучшие по виральности. Включается автоматически, если видео больше одного.</span></label>
+        </div>
+        <div>
+          <label>Кандидатов с каждого видео <code>--candidates-per-film</code></label>
+          <input type="number" name="candidates_per_film" value="10" min="1">
+          <div class="hint">Только для пакетного режима. Больше кандидатов — лучше выбор, но дольше анализ.</div>
+        </div>
+
+        <details>
+          <summary>Точная длина (переопределяет пресет)</summary>
+          <div class="row">
+            <div><label>Мин. секунд <code>--min-sec</code></label>
+              <input type="number" name="min_sec" step="1" placeholder="напр. 45"></div>
+            <div><label>Макс. секунд <code>--max-sec</code></label>
+              <input type="number" name="max_sec" step="1" placeholder="напр. 90"></div>
+          </div>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>4. Распознавание и субтитры</h2>
+        <div class="row">
+          <div>
+            <label>Язык речи <code>--language</code></label>
+            <select name="language">
+              <option value="">авто — определить самому</option>
+              <option value="ru" selected>Русский</option>
+              <option value="en">English — английский</option>
+              <option value="uk">Українська — украинский</option>
+              <option value="be">Беларуская — белорусский</option>
+              <option value="kk">Қазақша — казахский</option>
+              <option value="es">Español — испанский</option>
+              <option value="de">Deutsch — немецкий</option>
+              <option value="fr">Français — французский</option>
+              <option value="it">Italiano — итальянский</option>
+              <option value="pt">Português — португальский</option>
+              <option value="pl">Polski — польский</option>
+              <option value="tr">Türkçe — турецкий</option>
+              <option value="ar">العربية — арабский</option>
+              <option value="hi">हिन्दी — хинди</option>
+              <option value="zh">中文 — китайский</option>
+              <option value="ja">日本語 — японский</option>
+              <option value="ko">한국어 — корейский</option>
+              <option value="nl">Nederlands — нидерландский</option>
+              <option value="sv">Svenska — шведский</option>
+              <option value="id">Indonesia — индонезийский</option>
+            </select>
+            <div class="hint">Указанный язык распознаётся точнее, чем «авто».</div>
+          </div>
+          <div>
+            <label>Где распознавать речь <code>--whisper-device</code></label>
+            <select name="whisper_device">
+              <option value="">видеокарта, если доступна</option>
+              <option value="cpu">только процессор (медленно, но надёжно)</option>
+              <option value="cuda">только видеокарта</option>
+            </select>
+          </div>
+          <div>
+            <label>Модель распознавания <code>--model</code></label>
+            <select name="model">
+              <option value="">по умолчанию (large-v3-turbo)</option>
+              <option value="large-v3-turbo">large-v3-turbo — качество large-v3, но в разы быстрее</option>
+              <option value="large-v3">large-v3 — максимум качества, дольше всех</option>
+              <option value="large-v2">large-v2</option>
+              <option value="medium">medium — заметно хуже на русском</option>
+              <option value="small">small — быстро, для черновиков</option>
+              <option value="base">base</option>
+              <option value="tiny">tiny — самая быстрая, грубая</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="check">
+          <input type="checkbox" name="no_subs" id="nosubs">
+          <label for="nosubs" style="margin:0"><b>Без субтитров <code>--no-subs</code></b>
+          <span>Не прожигать текст в видео (только картинка и звук).</span></label>
+        </div>
+
+        <label>Шрифт субтитров <code>--font</code></label>
+        <select name="font" id="fontSel">
+          <optgroup label="Встроены в проект — работают сразу">
+            <option value="">Montserrat — по умолчанию</option>
+            <option value="Oswald">Oswald — узкий, для шортсов</option>
+            <option value="Roboto">Roboto — нейтральный, очень читаемый</option>
+          </optgroup>
+          <optgroup label="Системные Windows — нужна поддержка кириллицы">
+            <option value="Impact">Impact — жирный, классика</option>
+            <option value="Arial Black">Arial Black — очень жирный</option>
+            <option value="Verdana">Verdana — широкий, чёткий</option>
+            <option value="Tahoma">Tahoma — компактный</option>
+            <option value="Trebuchet MS">Trebuchet MS — мягкий</option>
+            <option value="Georgia">Georgia — с засечками</option>
+            <option value="Times New Roman">Times New Roman — классика</option>
+          </optgroup>
+        </select>
+        <div class="hint">Первые три лежат в папке assets и работают без установки.
+          Остальные берутся из Windows — если шрифта нет в системе, подставится
+          стандартный.</div>
+
+        <div class="fontPrev" id="fontPrev">
+          <div class="fp-line"><span class="fp-w">Это</span> <span class="fp-hl" id="fpHl">выделенное</span> <span class="fp-w">слово</span></div>
+          <div class="fp-line fp-small" id="fpHook">А ТАК ВЫГЛЯДИТ ЗАГОЛОВОК-ХУК</div>
+        </div>
+
+        <div class="row" style="margin-top:14px">
+          <div>
+            <label>Цвет обычных слов <code>--sub-color</code></label>
+            <div class="colorRow">
+              <input type="color" name="sub_color" id="subColor" value="#FFFFFF">
+              <span class="hint" id="subColorTxt">FFFFFF</span>
+            </div>
+          </div>
+          <div>
+            <label>Цвет подсветки <code>--sub-highlight</code></label>
+            <div class="colorRow">
+              <input type="color" name="sub_highlight" id="subHl" value="#FFD447">
+              <span class="hint" id="subHlTxt">FFD447</span>
+            </div>
+            <div class="hint">Цвет активного слова в такт речи.</div>
+          </div>
+        </div>
+
+        <div class="check" style="margin-top:12px">
+          <input type="checkbox" name="no_hook" id="nohook">
+          <label for="nohook" style="margin:0"><b>Убрать заголовок-хук <code>--no-hook</code></b>
+          <span>По умолчанию в первые 3.5 секунды поверх видео показывается крупный заголовок клипа. Отметь, чтобы его не было.</span></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>5. Поиск моментов (ИИ)</h2>
+        <div class="row">
+          <div>
+            <label>Провайдер <code>--llm-provider</code></label>
+            <select name="llm_provider">
+              <option value="">по умолчанию (gemini)</option>
+              <option value="gemini">gemini — бесплатно (нужен GOOGLE_API_KEY)</option>
+              <option value="groq">groq — бесплатно (GROQ_API_KEY)</option>
+              <option value="openrouter">openrouter — бесплатно (OPENROUTER_API_KEY)</option>
+              <option value="claude">claude — платно (ANTHROPIC_API_KEY)</option>
+            </select>
+            <div class="hint">Если gemini пишет «User location is not supported» — выбери groq.</div>
+          </div>
+          <div>
+            <label>Модель <code>--llm-model</code></label>
+            <input type="text" name="llm_model" placeholder="оставь пустым">
+            <div class="hint">Обычно не нужно — подбирается автоматически.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>6. Дополнительно</h2>
+        <div class="check">
+          <input type="checkbox" name="debug_camera" id="dbg">
+          <label for="dbg" style="margin:0"><b>Отладка камеры <code>--debug-camera</code></b>
+          <span>Сохраняет JSON и кадры с разметкой (что нашёл детектор, куда встала камера) в папку work. Нужно для диагностики проблем с кадрированием.</span></label>
+        </div>
+
+        <!--LOCAL_ONLY-->
+        <details>
+          <summary>Если YouTube не скачивается — прокси и куки</summary>
+          <label>Браузер <code>--cookies-browser</code></label>
+          <select name="cookies_browser">
+            <option value="">не использовать</option>
+            <option>chrome</option><option>firefox</option><option>edge</option>
+            <option>brave</option><option>opera</option><option>vivaldi</option>
+            <option>chromium</option>
+          </select>
+          <label>Прокси для скачивания <code>--proxy</code>
+            <div class="hint">Нужен, если YouTube не открывается напрямую.
+              Без пароля: <code>socks5h://127.0.0.1:1080</code><br>
+              С паролем: <code>socks5h://логин:пароль@адрес:порт</code><br>
+              Если в пароле есть <code>@ : / # %</code> — замените их кодами
+              <code>%40 %3A %2F %23 %25</code>.</div>
+          </label>
+          <input type="text" name="proxy" placeholder="socks5h://логин:пароль@адрес:порт">
+          <label>Или файл cookies.txt <code>--cookies-file</code>
+            <div class="hint">Подходит для любого браузера, включая Яндекс.Браузер.</div>
+          </label>
+          <input type="text" name="cookies_file" placeholder="cookies.txt">
+        </details>
+        <!--/LOCAL_ONLY-->
+      </div>
+
+      <div class="card">
+        <div class="bar">
+          <button type="submit" class="go" id="go">▶ Запустить</button>
+          <button type="button" class="stop" id="stopBtn" style="display:none">■ Остановить</button>
+          <button type="button" class="ghost" id="clearBtn">Очистить лог</button>
+        </div>
+        <div class="err" id="err"></div>
+      </div>
+    </form>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Ход работы</h2>
+      <div id="progWrap" style="display:none">
+        <div class="progHead">
+          <span id="progLabel">Готовим…</span>
+          <span id="progEta" class="progEta"></span>
+        </div>
+        <div class="progBar"><div id="progFill"></div></div>
+        <div id="progDetail" class="progDetail"></div>
+      </div>
+      <p id="progIdle" class="sub">Заполните форму слева и нажмите «Запустить».</p>
+      <details id="logBox" style="margin-top:12px">
+        <summary class="sub" style="cursor:pointer">Показать технический лог</summary>
+        <pre id="log"></pre>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2>Мои задачи</h2>
+      <p class="sub">История обработки.{% if public_mode %} Клипы хранятся 30 дней — успевайте скачать.{% endif %}</p>
+      <div id="jobsList"><div class="noRes">Загружаю…</div></div>
+      <div id="notifyBox" style="display:none;margin-top:14px;
+           padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
+        <label class="chk" style="font-size:13px">
+          <input type="checkbox" id="notifyCb">
+          Присылать письмо, когда клипы готовы
+        </label>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Результаты</h2>
+      <p class="sub">Ваши готовые клипы. Виральность — оценка ИИ от 1 до 10.</p>
+      <div class="sortBar">
+        <label style="margin:0">Сортировка</label>
+        <select id="sortSel">
+          <option value="virality">Виральность — сначала лучшие</option>
+          <option value="new">Новизна — сначала свежие</option>
+          <option value="old">Новизна — сначала старые</option>
+          <option value="name">Имя файла (А→Я)</option>
+          <option value="size">Размер — сначала большие</option>
+          <option value="duration">Длительность — сначала длинные</option>
+        </select>
+        <select id="folderSel"><option value="">Все папки</option></select>
+        <button type="button" class="ghost" id="refresh">Обновить</button>
+      </div>
+      <div class="res" id="res"></div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

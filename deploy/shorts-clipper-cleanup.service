@@ -1,0 +1,29 @@
+# Служба очистки диска: /etc/systemd/system/shorts-clipper-cleanup.service
+#   sudo systemctl enable --now shorts-clipper-cleanup
+#
+# Проверить, что удалилось бы, ничего не удаляя:
+#   sudo -u clipper /opt/shorts-clipper/venv/bin/python cleanup.py --dry-run
+
+[Unit]
+Description=shorts-clipper disk cleanup
+After=network.target
+
+[Service]
+Type=simple
+User=clipper
+Group=clipper
+WorkingDirectory=/opt/shorts-clipper
+EnvironmentFile=/etc/shorts-clipper.env
+ExecStart=/opt/shorts-clipper/venv/bin/python cleanup.py --loop
+Restart=always
+RestartSec=30
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/shorts-clipper/data
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

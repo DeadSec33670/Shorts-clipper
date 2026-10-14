@@ -1,0 +1,35 @@
+# Воркер обработки: /etc/systemd/system/shorts-clipper-worker@.service
+# Запуск одного:      sudo systemctl enable --now shorts-clipper-worker@1
+# Двух (2 GPU):       sudo systemctl enable --now shorts-clipper-worker@2
+#
+# Число воркеров = сколько задач видеокарта тянет одновременно.
+# Для large-v3-turbo на одной карте реалистично 1-2.
+
+[Unit]
+Description=shorts-clipper worker %i
+After=network.target
+
+[Service]
+Type=simple
+User=clipper
+Group=clipper
+WorkingDirectory=/opt/shorts-clipper
+EnvironmentFile=/etc/shorts-clipper.env
+ExecStart=/opt/shorts-clipper/venv/bin/python worker.py
+Restart=always
+RestartSec=10
+
+# Задача может идти десятки минут — даём завершиться штатно.
+# Воркер поймает SIGTERM, остановит ffmpeg и вернёт задачу в очередь.
+KillSignal=SIGTERM
+TimeoutStopSec=300
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/shorts-clipper/data
+MemoryMax=32G
+
+[Install]
+WantedBy=multi-user.target

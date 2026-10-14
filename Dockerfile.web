@@ -1,0 +1,41 @@
+# Образ САЙТА. Лёгкий: ни PyTorch, ни моделей — только Flask и логика.
+# Благодаря этому он собирается за минуту и поднимается за секунды, в отличие
+# от образа воркера, который весит гигабайты.
+FROM python:3.12-slim
+
+# Гарантируем UTF-8: без этого вывод с кириллицей и стрелками падает
+# UnicodeEncodeError в окружениях с другой локалью.
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONIOENCODING=utf-8 \
+    PYTHONUTF8=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Зависимости отдельным слоем: пока requirements не меняются, пересборка
+# кода не тянет за собой переустановку пакетов.
+COPY requirements-web.txt .
+RUN pip install --no-cache-dir -r requirements-web.txt
+
+COPY . .
+
+# Работаем не под root: если сайт всё же взломают, ущерб будет ограничен.
+RUN useradd --system --uid 10001 --create-home clipper \
+    && mkdir -p /data /app/backups \
+    && chown -R clipper:clipper /app /data
+USER clipper
+
+ENV CLIPPER_DATA_DIR=/data \
+    CLIPPER_DB_URL=sqlite:////data/clipper.db
+
+EXPOSE 8000
+
+# Проверка живости: контейнер считается больным, если в очереди есть задачи,
+# а воркеров нет — оркестратор об этом узнает сам.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request,sys; \
+    sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', \
+    timeout=5).status==200 else 1)"
+
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "web:app"]

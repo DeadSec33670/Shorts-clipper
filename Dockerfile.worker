@@ -1,0 +1,61 @@
+# Образ ВОРКЕРА: обработка видео на видеокарте.
+#
+# КЛЮЧЕВОЕ РЕШЕНИЕ — модели вшиты в образ.
+# При аренде машин (Vast.ai, RunPod) холодный старт складывается из получения
+# инстанса, скачивания образа, скачивания моделей и их загрузки в память.
+# Модели внутри образа убирают третий шаг целиком: у провайдеров образ
+# кешируется на хосте, а модель качается заново каждый раз. Образ выходит
+# тяжелее, зато машина готова к работе через минуту, а не через десять.
+
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONIOENCODING=utf-8 \
+    PYTHONUTF8=1 \
+    PIP_NO_CACHE_DIR=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    # Кеш моделей внутри образа, а не в домашней папке пользователя
+    HF_HOME=/models \
+    TZ=Europe/Moscow
+
+# ffmpeg из репозитория Ubuntu собран с поддержкой NVENC.
+# ПРОВЕРЬТЕ после сборки:  docker compose run --rm worker ffmpeg -encoders | grep nvenc
+# Если h264_nvenc отсутствует, соберите ffmpeg вручную или поставьте
+# CLIPPER_ENCODER=libx264 — рендер будет идти на процессоре.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.10 python3-pip ffmpeg \
+        libgl1 libglib2.0-0 \
+        ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# PyTorch с CUDA — отдельным слоем: он самый тяжёлый и меняется реже всего.
+# cu121 совместим с CUDA 12.4 в базовом образе.
+RUN pip3 install --no-cache-dir \
+        torch==2.4.1 torchaudio==2.4.1 \
+        --index-url https://download.pytorch.org/whl/cu121
+
+COPY requirements.txt requirements-worker.txt ./
+RUN pip3 install --no-cache-dir -r requirements-worker.txt
+
+# Загружаем модель распознавания В ОБРАЗ. Это и есть основная экономия
+# на холодном старте: иначе каждая новая машина качала бы её заново.
+ARG WHISPER_MODEL=large-v3-turbo
+RUN python3 -c "\
+from faster_whisper import WhisperModel; \
+WhisperModel('${WHISPER_MODEL}', device='cpu', compute_type='int8'); \
+print('модель ${WHISPER_MODEL} вшита в образ')"
+
+COPY . .
+
+RUN useradd --system --uid 10001 --create-home clipper \
+    && mkdir -p /data \
+    && chown -R clipper:clipper /app /data /models
+USER clipper
+
+ENV CLIPPER_DATA_DIR=/data \
+    CLIPPER_DB_URL=sqlite:////data/clipper.db
+
+CMD ["python3", "worker.py"]

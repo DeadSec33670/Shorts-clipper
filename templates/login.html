@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Вход — shorts-clipper</title>
+<meta name="csrf-token" content="{{ csrf_token }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+</head>
+<body>
+  <div class="box">
+    <h1>shorts-clipper</h1>
+    <p class="sub">Вход в панель</p>
+    <form id="f">
+      <label>Почта</label>
+      <input type="email" id="email" autocomplete="username" required autofocus>
+      <label>Пароль</label>
+      <input type="password" id="password" autocomplete="current-password" required>
+      <button type="submit" id="btn">Войти</button>
+    </form>
+    <div class="err" id="err"></div>
+    <div class="note">Аккаунты создаёт администратор.<br>
+      Нет доступа — напишите владельцу и пришлите свою почту.</div>
+  </div>
+<script src="{{ url_for('static', filename='js/login.js') }}"></script>
+</body>
+</html>

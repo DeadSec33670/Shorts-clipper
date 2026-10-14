@@ -1,0 +1,10 @@
+# Зависимости ВОРКЕРА: всё, что нужно для обработки видео.
+# PyTorch ставится отдельно в Dockerfile — версия зависит от CUDA.
+-r requirements.txt
+
+argon2-cffi>=23.1.0
+boto3>=1.34.0
+
+# Режим --asd (точное определение говорящего)
+python_speech_features>=0.6
+scipy>=1.10

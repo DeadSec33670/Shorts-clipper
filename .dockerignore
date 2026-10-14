@@ -1,0 +1,31 @@
+# Секреты и данные — НИКОГДА не должны попадать в образ:
+# образ уходит в реестр и на арендованные машины.
+.env
+*.env
+!deploy/env.example
+.flask_secret
+users.json
+usage.json
+*.migrated
+data/
+backups/
+*.db
+*.db-wal
+*.db-shm
+
+# Результаты и кеш
+clips/
+work/
+web_uploads/
+
+# Мусор
+__pycache__/
+*.py[cod]
+venv/
+venv*/
+.venv/
+.git/
+.gitignore
+.idea/
+.vscode/
+*.log

@@ -1,0 +1,22 @@
+yt-dlp>=2025.1.1
+faster-whisper>=1.1.0   # 1.1+ нужен для large-v3-turbo
+opencv-python-headless>=4.9.0
+onnxruntime>=1.17.0
+
+# LLM-провайдер для поиска моментов — установите тот, который используете
+# (можно несколько сразу и переключаться флагом --llm-provider):
+google-genai>=0.3.0     # gemini (бесплатно, по умолчанию)
+
+# Нужен, если задан SOCKS-прокси (CLIPPER_PROXY=socks5://…): без него
+# запросы к LLM через SOCKS работать не будут.
+httpx[socks]>=0.27.0
+openai>=1.0.0           # groq и openrouter — оба через OpenAI-совместимый клиент
+# anthropic>=0.40.0     # claude (платно) — раскомментируйте при необходимости
+
+# --- Режим --asd (точное определение говорящего, опционально) ---
+# PyTorch ставится ОТДЕЛЬНО под вашу систему (см. README), плюс:
+# python_speech_features>=0.6
+# scipy>=1.10   (нужен для python_speech_features)
+
+# --- веб-панель (web.py), опционально ---
+flask>=3.0.0

@@ -1,0 +1,43 @@
+# systemd-юнит: /etc/systemd/system/shorts-clipper.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now shorts-clipper
+#   journalctl -u shorts-clipper -f     # смотреть логи
+
+[Unit]
+Description=shorts-clipper web
+After=network.target
+
+[Service]
+Type=notify
+User=clipper
+Group=clipper
+WorkingDirectory=/opt/shorts-clipper
+
+# Секреты в отдельном файле с правами 600, а не в этом юните:
+# содержимое юнита видно любому пользователю системы через systemctl cat.
+EnvironmentFile=/etc/shorts-clipper.env
+
+ExecStart=/opt/shorts-clipper/venv/bin/gunicorn -c gunicorn.conf.py web:app
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=5
+
+# --- изоляция процесса: ограничиваем ущерб при взломе ---
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict          # вся файловая система только на чтение…
+ReadWritePaths=/opt/shorts-clipper/clips /opt/shorts-clipper/work /opt/shorts-clipper/web_uploads /opt/shorts-clipper/data
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Видео и модели прожорливы — ограничиваем, чтобы не уронить весь сервер
+MemoryMax=24G
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target

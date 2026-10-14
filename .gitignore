@@ -1,0 +1,31 @@
+# секреты и данные пользователей — НИКОГДА не коммитить
+users.json
+usage.json
+.flask_secret
+.env
+*.env
+!deploy/env.example
+cookies.txt
+
+# пользовательские файлы и результаты
+web_uploads/
+work/
+clips/
+
+# python
+__pycache__/
+*.py[cod]
+venv/
+venv*/
+.venv/
+data/
+*.migrated
+backups/
+.vpn_proxy_cache.json
+*.db
+*.db-wal
+*.db-shm
+*.log
+.idea/
+.vscode/
+.DS_Store

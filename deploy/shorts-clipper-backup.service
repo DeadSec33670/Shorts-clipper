@@ -1,0 +1,34 @@
+# Копирование базы: /etc/systemd/system/shorts-clipper-backup.service
+#   sudo systemctl enable --now shorts-clipper-backup
+#
+# Посмотреть копии:   sudo -u clipper venv/bin/python backup.py --list
+# Восстановить:       sudo -u clipper venv/bin/python backup.py --restore ФАЙЛ
+#
+# ВАЖНО: копия рядом с базой не спасает ни от отказа диска, ни от взлома.
+# Настройте отправку /opt/shorts-clipper/backups на другой сервер или в
+# объектное хранилище, обязательно в зашифрованном виде — там персональные
+# данные: адреса почты и хеши паролей.
+
+[Unit]
+Description=shorts-clipper database backup
+After=network.target
+
+[Service]
+Type=simple
+User=clipper
+Group=clipper
+WorkingDirectory=/opt/shorts-clipper
+EnvironmentFile=/etc/shorts-clipper.env
+ExecStart=/opt/shorts-clipper/venv/bin/python backup.py --loop
+Restart=always
+RestartSec=60
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/shorts-clipper/backups /opt/shorts-clipper/data
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
